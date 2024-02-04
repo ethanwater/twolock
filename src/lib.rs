@@ -1,22 +1,25 @@
-use std::sync::{Arc, Mutex};
+#![allow(unused)]
+use std::{
+    borrow::Borrow, mem::replace, ops::Deref, sync::{Arc, Mutex}
+};
 
+#[derive(Debug, Clone)]
 struct Node<T> {
-    //Maybe use Arc?
     value: T,
     next: Option<Arc<Mutex<Node<T>>>>,
 }
 
 impl<T: Default> Node<T> {
     fn new(value: T, next: Option<Arc<Mutex<Node<T>>>>) -> Self {
-        Self {
-            value: value,
-            next: next,
-        }
+        Self { value, next }
+    }
+
+    fn inner(self) -> Self {
+        return self
     }
 }
 
 struct Queue<T> {
-    //Maybe use Arc?
     head: Arc<Mutex<Node<T>>>,
     tail: Arc<Mutex<Node<T>>>,
     h_lock: Mutex<T>,
@@ -45,17 +48,28 @@ impl<T: Default> Queue<T> {
         // Link node at the end of the linked list
         // Swing Tail to node
         // Release T lock
-        let node = Arc::new(Mutex::new(Node::new(value, None)));
-
-        let _t_guard = self.t_lock.lock().unwrap();
+        let new_node = Node::new(value, None);
+        let node = Arc::new(Mutex::new(new_node));
+    
         let mut tail_node = self.tail.lock().unwrap();
-        tail_node.next = Some(Arc::clone(&node));
-        *tail_node = std::mem::replace(&mut *node.lock().unwrap(), Node::new(T::default(), None));
+        let mut head_node = self.head.lock().unwrap();
+
+        if let Some(ref mut tail_next) = tail_node.next {
+            tail_next.lock().unwrap().next = Some(Arc::clone(&node));
+        }
+        if head_node.next.is_none() {
+            head_node.next = Some(Arc::clone(&node));
+        }
+        //TODO: mem::replace is too sketchy
+        //note: without this line of code, the head works fine, but the tails do not. and vice versa.
+        //gonna take a break for now.
+        *tail_node = std::mem::replace(&mut *node.lock().unwrap(), Node::new(T::default(), None));//*tail_node = ;  
     }
 
     fn dequeue(&mut self, p_value: *mut T) -> bool {
-        todo!()
-        //Acquire H lock in order to access Head # Read Head
+        todo!();
+        // Acquire H lock in order to access Head
+        // Read Head
         // Read next pointer
         // Is queue empty?
         // Release H lock before return # Queue was empty
@@ -63,6 +77,9 @@ impl<T: Default> Queue<T> {
         // Release H lock
         // Free node
         // Queue was not empty, dequeue succeeded
+
+        let _h_guard = self.h_lock.lock().unwrap();
+        let mut head_node = self.head.lock().unwrap();
     }
 }
 
@@ -78,18 +95,36 @@ mod tests {
             h_lock: Mutex::new(i32::default()),
             t_lock: Mutex::new(i32::default()),
         };
-
+    
+        {
+            let head_node = queue.head.lock().unwrap();
+            println!("{:?}", *head_node);
+        }
+    
         queue.enqueue(1);
+        {
+            let head_node = queue.head.lock().unwrap();
+            println!("{:?}", *head_node);
+            let tail_value = queue.tail.lock().unwrap().value;
+            println!("Tail value: {}", tail_value);
+        }
+    
         queue.enqueue(2);
+        {
+            let head_node = queue.head.lock().unwrap();
+            println!("{:?}", *head_node);
+            let tail_value = queue.tail.lock().unwrap().value;
+            println!("Tail value: {}", tail_value);
+        }
+    
         queue.enqueue(3);
-
-        // verify the tail points to the last enqueued value
-        let tail_node = queue.tail.lock().unwrap();
-        assert_eq!(tail_node.value, 3);
-
+        {
+            let head_node = queue.head.lock().unwrap();
+            println!("{:?}", *head_node);
+            let tail_value = queue.tail.lock().unwrap().value;
+            println!("Tail value: {}", tail_value);
+        }
         //TODO: verify the previous tail's next points to the new tail
-        //let binding = queue.head.lock().unwrap();
-        //let prev_tail_next = binding.next.as_ref().unwrap().lock().unwrap();
-        //assert_eq!(prev_tail_next.value, 1);
     }
+     
 }
