@@ -1,6 +1,6 @@
 #![allow(unused)]
 use std::{
-    borrow::Borrow, mem::replace, ops::Deref, sync::{Arc, Mutex}
+    borrow::Borrow, ffi::CStr, mem::replace, ops::Deref, sync::{Arc, Mutex}
 };
 
 #[derive(Debug, Clone)]
@@ -9,13 +9,13 @@ struct Node<T> {
     next: Option<Arc<Mutex<Node<T>>>>,
 }
 
-impl<T: Default> Node<T> {
+impl<T> Node<T> {
     fn new(value: T, next: Option<Arc<Mutex<Node<T>>>>) -> Self {
         Self { value, next }
     }
 
     fn inner(self) -> Self {
-        return self
+        return self;
     }
 }
 
@@ -40,7 +40,9 @@ impl<T: Default> Queue<T> {
         self.t_lock = Mutex::new(T::default());
     }
 
-    fn enqueue(&mut self, value: T) {
+    fn enqueue(&mut self, value: T) 
+    where T: Clone
+    {
         // Allocate a new node from the free list
         // Copy enqueued value into node
         // Set next pointer of node to NULL
@@ -48,22 +50,25 @@ impl<T: Default> Queue<T> {
         // Link node at the end of the linked list
         // Swing Tail to node
         // Release T lock
-        let new_node = Node::new(value, None);
-        let node = Arc::new(Mutex::new(new_node));
-    
         let mut tail_node = self.tail.lock().unwrap();
         let mut head_node = self.head.lock().unwrap();
 
+        if head_node.next.is_none() {
+            let value_clone = value.clone();
+            let node = Arc::new(Mutex::new(Node::new(value_clone, None)));
+            head_node.next = Some(Arc::clone(&node));
+        }
+
+        let node = Arc::new(Mutex::new(Node::new(value, None)));
         if let Some(ref mut tail_next) = tail_node.next {
             tail_next.lock().unwrap().next = Some(Arc::clone(&node));
         }
-        if head_node.next.is_none() {
-            head_node.next = Some(Arc::clone(&node));
-        }
-        //TODO: mem::replace is too sketchy
+        
+        //TODO: mem::replace is a bit too sketchy
         //note: without this line of code, the head works fine, but the tails do not. and vice versa.
         //gonna take a break for now.
-        *tail_node = std::mem::replace(&mut *node.lock().unwrap(), Node::new(T::default(), None));//*tail_node = ;  
+        *tail_node = std::mem::replace(&mut *node.lock().unwrap(), Node::new(T::default(), None));
+        //*tail_node = ;
     }
 
     fn dequeue(&mut self, p_value: *mut T) -> bool {
@@ -85,6 +90,8 @@ impl<T: Default> Queue<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::alloc::handle_alloc_error;
+
     use super::*;
 
     #[test]
@@ -95,36 +102,42 @@ mod tests {
             h_lock: Mutex::new(i32::default()),
             t_lock: Mutex::new(i32::default()),
         };
-    
+
         {
-            let head_node = queue.head.lock().unwrap();
-            println!("{:?}", *head_node);
+            
+            //let head_node = queue.head.lock().unwrap();
+            //println!("{:?}", *head_node);
         }
-    
+
         queue.enqueue(1);
         {
-            let head_node = queue.head.lock().unwrap();
-            println!("{:?}", *head_node);
+            //let head_node = queue.head.lock().unwrap();
+            //println!("{:?}", *head_node);
+
             let tail_value = queue.tail.lock().unwrap().value;
-            println!("Tail value: {}", tail_value);
+            assert_eq!(tail_value, 1);
+            //println!("Tail value: {}", tail_value);
         }
-    
+
         queue.enqueue(2);
         {
-            let head_node = queue.head.lock().unwrap();
-            println!("{:?}", *head_node);
+            //let head_node = queue.head.lock().unwrap();
+            //println!("{:?}", *head_node);
+
             let tail_value = queue.tail.lock().unwrap().value;
-            println!("Tail value: {}", tail_value);
+            assert_eq!(tail_value, 2);
+            //println!("Tail value: {}", tail_value);
         }
-    
+
         queue.enqueue(3);
         {
-            let head_node = queue.head.lock().unwrap();
-            println!("{:?}", *head_node);
+            //let head_node = queue.head.lock().unwrap();
+            //println!("{:?}", *head_node);
+
             let tail_value = queue.tail.lock().unwrap().value;
-            println!("Tail value: {}", tail_value);
+            assert_eq!(tail_value, 3);
+            //println!("Tail value: {}", tail_value);
         }
         //TODO: verify the previous tail's next points to the new tail
     }
-     
 }
