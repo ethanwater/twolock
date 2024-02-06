@@ -1,6 +1,10 @@
 #![allow(unused)]
 use std::{
-    borrow::Borrow, ffi::CStr, mem::replace, ops::Deref, sync::{Arc, Mutex}
+    borrow::Borrow,
+    ffi::CStr,
+    mem::replace,
+    ops::Deref,
+    sync::{Arc, Mutex},
 };
 
 #[derive(Debug, Clone)]
@@ -40,8 +44,9 @@ impl<T: Default> Queue<T> {
         self.t_lock = Mutex::new(T::default());
     }
 
-    fn enqueue(&mut self, value: T) 
-    where T: Clone
+    fn enqueue(&mut self, value: T)
+    where
+        T: Clone,
     {
         // Allocate a new node from the free list
         // Copy enqueued value into node
@@ -63,7 +68,7 @@ impl<T: Default> Queue<T> {
         if let Some(ref mut tail_next) = tail_node.next {
             tail_next.lock().unwrap().next = Some(Arc::clone(&node));
         }
-        
+
         //TODO: mem::replace is a bit too sketchy
         //note: without this line of code, the head works fine, but the tails do not. and vice versa.
         //gonna take a break for now.
@@ -71,8 +76,10 @@ impl<T: Default> Queue<T> {
         //*tail_node = ;
     }
 
-    fn dequeue(&mut self, p_value: *mut T) -> bool {
-        todo!();
+    fn dequeue(&mut self) -> Option<T>
+    where
+        T: Clone,
+    {
         // Acquire H lock in order to access Head
         // Read Head
         // Read next pointer
@@ -84,7 +91,27 @@ impl<T: Default> Queue<T> {
         // Queue was not empty, dequeue succeeded
 
         let _h_guard = self.h_lock.lock().unwrap();
-        let mut head_node = self.head.lock().unwrap();
+        let head_node = self.head.lock().unwrap();
+
+        if head_node.next.is_none() {
+            return None;
+        }
+
+        if let Some(ref head_next) = head_node.next {
+            let p_value = head_next.lock().unwrap().value.clone();
+            let new_head = head_next.clone();
+
+            drop(head_node);
+
+            {
+                let _ = &self.head;
+                self.head = new_head.clone();
+            }
+
+            return Some(p_value);
+        } else {
+            return None;
+        }
     }
 }
 
@@ -95,7 +122,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_enqueue() {
+    fn test_queue() {
         let mut queue: Queue<i32> = Queue {
             head: Arc::new(Mutex::new(Node::new(0, None))),
             tail: Arc::new(Mutex::new(Node::new(0, None))),
@@ -104,40 +131,61 @@ mod tests {
         };
 
         {
-            
-            //let head_node = queue.head.lock().unwrap();
-            //println!("{:?}", *head_node);
+            println!("\nqueue::init:");
+            let head_node = queue.head.lock().unwrap();
+            println!("{:?}", *head_node);
         }
 
         queue.enqueue(1);
         {
-            //let head_node = queue.head.lock().unwrap();
-            //println!("{:?}", *head_node);
-
+            println!("\nqueue::enqueue[1]:");
+            let head_node = queue.head.lock().unwrap();
             let tail_value = queue.tail.lock().unwrap().value;
+
+            println!("head: {:?}", *head_node);
+            println!("Tail value: {}", tail_value);
+
+            assert_eq!(head_node.value, 0);
             assert_eq!(tail_value, 1);
-            //println!("Tail value: {}", tail_value);
         }
 
         queue.enqueue(2);
         {
-            //let head_node = queue.head.lock().unwrap();
-            //println!("{:?}", *head_node);
-
+            println!("\nqueue::enqueue[2]:");
+            let head_node = queue.head.lock().unwrap();
             let tail_value = queue.tail.lock().unwrap().value;
+
+            println!("head: {:?}", *head_node);
+            println!("Tail value: {}", tail_value);
+
+            assert_eq!(head_node.value, 0);
             assert_eq!(tail_value, 2);
-            //println!("Tail value: {}", tail_value);
         }
 
         queue.enqueue(3);
         {
-            //let head_node = queue.head.lock().unwrap();
-            //println!("{:?}", *head_node);
-
+            println!("\nqueue::enqueue[3]:");
+            let head_node = queue.head.lock().unwrap();
             let tail_value = queue.tail.lock().unwrap().value;
+
+            println!("head: {:?}", *head_node);
+            println!("Tail value: {}", tail_value);
+
+            assert_eq!(head_node.value, 0);
             assert_eq!(tail_value, 3);
-            //println!("Tail value: {}", tail_value);
         }
-        //TODO: verify the previous tail's next points to the new tail
+
+        queue.dequeue();
+        {
+            println!("\nqueue::dequeue:");
+            let head_node = queue.head.lock().unwrap();
+            let tail_value = queue.tail.lock().unwrap().value;
+
+            println!("head: {:?}", *head_node);
+            println!("Tail value: {}\n", tail_value);
+
+            assert_eq!(head_node.value, 1);
+            assert_eq!(tail_value, 3);
+        }
     }
 }
