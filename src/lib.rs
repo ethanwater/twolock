@@ -1,11 +1,9 @@
 #![allow(unused)]
 use std::{
-    borrow::Borrow,
-    ffi::CStr,
     mem::replace,
-    ops::Deref,
     sync::{Arc, Mutex},
 };
+use tokio::sync;
 
 #[derive(Debug, Clone)]
 struct Node<T> {
@@ -26,8 +24,8 @@ impl<T> Node<T> {
 struct Queue<T> {
     head: Arc<Mutex<Node<T>>>,
     tail: Arc<Mutex<Node<T>>>,
-    h_lock: Mutex<T>,
-    t_lock: Mutex<T>,
+    h_lock: sync::Mutex<T>,
+    t_lock: sync::Mutex<T>,
 }
 
 impl<T: Default> Queue<T> {
@@ -40,11 +38,11 @@ impl<T: Default> Queue<T> {
 
         self.head = Arc::clone(&arc_node);
         self.tail = Arc::clone(&arc_node);
-        self.h_lock = Mutex::new(T::default());
-        self.t_lock = Mutex::new(T::default());
+        self.h_lock = sync::Mutex::new(T::default());
+        self.t_lock = sync::Mutex::new(T::default());
     }
 
-    fn enqueue(&mut self, value: T)
+    async fn enqueue(&mut self, value: T)
     where
         T: Clone,
     {
@@ -76,7 +74,7 @@ impl<T: Default> Queue<T> {
         //*tail_node = ;
     }
 
-    fn dequeue(&mut self) -> Option<T>
+    async fn dequeue(&mut self) -> Option<T>
     where
         T: Clone,
     {
@@ -118,16 +116,17 @@ impl<T: Default> Queue<T> {
 #[cfg(test)]
 mod tests {
     use std::alloc::handle_alloc_error;
+    use tokio::sync;
 
     use super::*;
 
-    #[test]
-    fn test_queue() {
+    #[tokio::test]
+    async fn test_queue() {
         let mut queue: Queue<i32> = Queue {
             head: Arc::new(Mutex::new(Node::new(0, None))),
             tail: Arc::new(Mutex::new(Node::new(0, None))),
-            h_lock: Mutex::new(i32::default()),
-            t_lock: Mutex::new(i32::default()),
+            h_lock: sync::Mutex::new(i32::default()),
+            t_lock: sync::Mutex::new(i32::default()),
         };
 
         {
@@ -136,7 +135,7 @@ mod tests {
             println!("{:?}", *head_node);
         }
 
-        queue.enqueue(1);
+        queue.enqueue(1).await;
         {
             println!("\nqueue::enqueue[1]:");
             let head_node = queue.head.lock().unwrap();
@@ -149,7 +148,7 @@ mod tests {
             assert_eq!(tail_value, 1);
         }
 
-        queue.enqueue(2);
+        queue.enqueue(2).await;
         {
             println!("\nqueue::enqueue[2]:");
             let head_node = queue.head.lock().unwrap();
@@ -162,7 +161,7 @@ mod tests {
             assert_eq!(tail_value, 2);
         }
 
-        queue.enqueue(3);
+        queue.enqueue(3).await;
         {
             println!("\nqueue::enqueue[3]:");
             let head_node = queue.head.lock().unwrap();
@@ -175,7 +174,7 @@ mod tests {
             assert_eq!(tail_value, 3);
         }
 
-        queue.dequeue();
+        queue.dequeue().await;
         {
             println!("\nqueue::dequeue:");
             let head_node = queue.head.lock().unwrap();
